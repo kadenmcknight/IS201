@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire & Water Adventure - 3 Levels</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #e0e0e0; /* Slightly different background */
+            margin: 0;
+            font-family: sans-serif;
+            flex-direction: column;
+        }
+
+        #gameArea {
+            width: 800px;
+            height: 600px;
+            border: 3px solid #555; /* Thicker border */
+            position: relative;
+            background-color: #d3e8ff;
+            overflow: hidden;
+        }
+
+        .player {
+            width: 30px;
+            height: 40px;
+            position: absolute;
+            /* bottom/left are set by JS */
+            transition: left 0.05s linear, top 0.05s linear;
+        }
+
+        #player1 {
+            background-color: #ff4500; /* Fire */
+        }
+
+        #player2 {
+            background-color: #1e90ff; /* Water */
+        }
+
+        /* Make dynamically added elements identifiable */
+        .level-element {
+             position: absolute;
+        }
+
+        .platform {
+            background-color: #8b4513; /* Brown */
+        }
+
+        .obstacle {
+            width: 50px; /* Default, can be overridden by level data */
+            height: 20px; /* Default */
+        }
+
+        .fire {
+            background-color: #ff4500;
+            opacity: 0.7;
+        }
+
+        .water {
+            background-color: #1e90ff;
+            opacity: 0.7;
+        }
+
+        #goal { /* Style the goal element */
+            width: 60px;
+            height: 60px;
+            background-color: #ffd700; /* Gold */
+            border: 3px solid #b8860b;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            text-align: center;
+            color: #333;
+            font-weight: bold;
+        }
+
+        #message {
+            margin-top: 15px;
+            font-size: 1.3em;
+            color: #333;
+            font-weight: bold;
+            min-height: 1.5em;
+            text-align: center;
+        }
+         #levelDisplay {
+             position: absolute;
+             top: 10px;
+             left: 10px;
+             font-size: 1.1em;
+             color: #444;
+             background-color: rgba(255, 255, 255, 0.7);
+             padding: 3px 8px;
+             border-radius: 5px;
+         }
+    </style>
+</head>
+<body>
+
+    <div id="gameArea">
+        <div id="player1" class="player"></div>
+        <div id="player2" class="player"></div>
+
+        <div id="levelDisplay">Level: 1</div>
+    </div>
+
+    <div id="message">Controls: P1 (WASD), P2 (Arrows). Reach the Goal!</div>
+
+    <script>
+        const gameArea = document.getElementById('gameArea');
+        const player1Element = document.getElementById('player1');
+        const player2Element = document.getElementById('player2');
+        const message = document.getElementById('message');
+        const levelDisplay = document.getElementById('levelDisplay');
+
+        // These will be dynamically updated when levels load
+        let platforms = [];
+        let obstacles = [];
+        let goal = null;
+
+        const gameAreaRect = gameArea.getBoundingClientRect(); // Get dimensions once
+
+        // --- Game Settings (Adjusted for Easier Play) ---
+        const gravity = 0.45; // Slightly lower gravity
+        const moveSpeed = 5;
+        const jumpStrength = 13; // Slightly higher jump
+
+        // --- Level Data ---
+        const levelData = [
+            // --- Level 1 (Easier) ---
+            {
+                playerStarts: { p1: { x: 80, y: 500 }, p2: { x: 130, y: 500 } },
+                platforms: [
+                    { id: 'p1-1', x: 0, y: 570, width: 800, height: 30 }, // Ground
+                    { id: 'p1-2', x: 300, y: 450, width: 200, height: 20 },
+                    { id: 'p1-3', x: 50, y: 350, width: 150, height: 20 },
+                    { id: 'p1-4', x: 600, y: 350, width: 150, height: 20 },
+                    { id: 'p1-5', x: 350, y: 200, width: 100, height: 20 }, // Goal platform
+                ],
+                obstacles: [
+                    { id: 'o1-w1', type: 'water', x: 400, y: 550, width: 50, height: 20 }, // Moved lower, less intrusive
+                    { id: 'o1-f1', type: 'fire', x: 100, y: 380, width: 50, height: 20 }, // Above platform
+                ],
+                goal: { x: 370, y: 140 } // On platform p1-5
+            },
+            // --- Level 2 (Moderate) ---
+             {
+                playerStarts: { p1: { x: 50, y: 500 }, p2: { x: 700, y: 500 } }, // Start separated
+                platforms: [
+                    { id: 'p2-1', x: 0, y: 570, width: 300, height: 30 }, // Left ground
+                    { id: 'p2-2', x: 500, y: 570, width: 300, height: 30 }, // Right ground
+                    { id: 'p2-3', x: 150, y: 450, width: 100, height: 20 },
+                    { id: 'p2-4', x: 550, y: 450, width: 100, height: 20 },
+                    { id: 'p2-5', x: 300, y: 350, width: 200, height: 20 }, // Center platform
+                    { id: 'p2-6', x: 0, y: 250, width: 150, height: 20 },
+                    { id: 'p2-7', x: 650, y: 250, width: 150, height: 20 },
+                    { id: 'p2-8', x: 375, y: 150, width: 50, height: 20 }, // Small goal platform
+                ],
+                obstacles: [
+                    { id: 'o2-f1', type: 'fire', x: 200, y: 550, width: 50, height: 20 }, // Fire on left ground
+                    { id: 'o2-w1', type: 'water', x: 550, y: 550, width: 50, height: 20 }, // Water on right ground
+                    { id: 'o2-w2', type: 'water', x: 350, y: 380, width: 100, height: 20 }, // Water pool under center
+                    { id: 'o2-f2', type: 'fire', x: 50, y: 280, width: 50, height: 20 },
+                ],
+                goal: { x: 370, y: 90 } // On platform p2-8
+            },
+            // --- Level 3 (Challenging) ---
+            {
+                playerStarts: { p1: { x: 30, y: 50 }, p2: { x: 730, y: 50 } }, // Start high up
+                platforms: [
+                    { id: 'p3-1', x: 0, y: 120, width: 100, height: 20 }, // P1 start plat
+                    { id: 'p3-2', x: 700, y: 120, width: 100, height: 20 }, // P2 start plat
+                    { id: 'p3-3', x: 200, y: 220, width: 50, height: 20 }, // Stepping stones
+                    { id: 'p3-4', x: 350, y: 280, width: 50, height: 20 },
+                    { id: 'p3-5', x: 500, y: 220, width: 50, height: 20 },
+                    { id: 'p3-6', x: 100, y: 400, width: 250, height: 20 }, // Mid plats
+                    { id: 'p3-7', x: 450, y: 400, width: 250, height: 20 },
+                    { id: 'p3-8', x: 0, y: 570, width: 800, height: 30 }, // Ground
+                    { id: 'p3-9', x: 375, y: 500, width: 50, height: 20 }, // Goal Plat
+                ],
+                obstacles: [
+                     { id: 'o3-f1', type: 'fire', x: 250, y: 420, width: 50, height: 20 },
+                     { id: 'o3-w1', type: 'water', x: 500, y: 420, width: 50, height: 20 },
+                     { id: 'o3-f2', type: 'fire', x: 100, y: 550, width: 200, height: 20 }, // Fire pool left
+                     { id: 'o3-w2', type: 'water', x: 500, y: 550, width: 200, height: 20 }, // Water pool right
+                ],
+                goal: { x: 370, y: 440 } // On platform p3-9
+            }
+        ];
+
+        let currentLevel = 0; // Start at level 0 (index)
+
+        // Player State
+        let player1State = { x: 0, y: 0, velX: 0, velY: 0, onGround: false, atGoal: false };
+        let player2State = { x: 0, y: 0, velX: 0, velY: 0, onGround: false, atGoal: false };
+
+        let keys = {};
+        let gameOver = false; // For entire game completion
+        let levelComplete = false; // For current level flag
+
+        // --- Input Handling ---
+        document.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
+                e.preventDefault();
+            }
+        });
+        document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+        // --- Collision Detection ---
+        function getElementRect(element) {
+             // Use getBoundingClientRect for simplicity AFTER element is added to DOM
+             const rect = element.getBoundingClientRect();
+             const areaRect = gameArea.getBoundingClientRect();
+             return {
+                 left: rect.left - areaRect.left,
+                 top: rect.top - areaRect.top,
+                 right: rect.right - areaRect.left,
+                 bottom: rect.bottom - areaRect.top,
+                 width: rect.width,
+                 height: rect.height
+             };
+        }
+
+        function checkCollision(rect1, rect2) {
+            // Basic AABB collision check
+            return (
+                rect1.left < rect2.right &&
+                rect1.right > rect2.left &&
+                rect1.top < rect2.bottom &&
+                rect1.bottom > rect2.top
+            );
+        }
+
+        // --- Level Management ---
+         function clearLevelElements() {
+             const elementsToRemove = gameArea.querySelectorAll('.level-element');
+             elementsToRemove.forEach(el => gameArea.removeChild(el));
+             platforms = [];
+             obstacles = [];
+             goal = null;
+         }
+
+        function loadLevel(levelIndex) {
+            clearLevelElements(); // Remove old elements first
+            levelComplete = false; // Reset level complete flag
+            message.textContent = `Controls: P1 (WASD), P2 (Arrows). Reach the Goal!`; // Reset message
+            message.style.color = '#333';
+
+            const level = levelData[levelIndex];
+            levelDisplay.textContent = `Level: ${levelIndex + 1}`;
+
+            // Create platforms
+            level.platforms.forEach(p => {
+                const plat = document.createElement('div');
+                plat.id = p.id;
+                plat.className = 'level-element platform'; // Add base class
+                plat.style.left = `${p.x}px`;
+                plat.style.top = `${p.y}px`;
+                plat.style.width = `${p.width}px`;
+                plat.style.height = `${p.height}px`;
+                gameArea.appendChild(plat);
+            });
+
+            // Create obstacles
+            level.obstacles.forEach(o => {
+                const obs = document.createElement('div');
+                obs.id = o.id;
+                obs.className = `level-element obstacle ${o.type}`; // Add base class and type
+                obs.style.left = `${o.x}px`;
+                obs.style.top = `${o.y}px`;
+                 if(o.width) obs.style.width = `${o.width}px`;
+                 if(o.height) obs.style.height = `${o.height}px`;
+                gameArea.appendChild(obs);
+            });
+
+            // Create goal
+            const goalEl = document.createElement('div');
+            goalEl.id = 'goal'; // Keep ID for styling/logic if needed
+             goalEl.className = 'level-element'; // Add base class
+            goalEl.style.left = `${level.goal.x}px`;
+            goalEl.style.top = `${level.goal.y}px`;
+            goalEl.innerHTML = "GOAL"; // Add text back
+            gameArea.appendChild(goalEl);
+
+            // IMPORTANT: Update references to the newly created DOM elements
+            platforms = gameArea.querySelectorAll('.platform');
+            obstacles = gameArea.querySelectorAll('.obstacle');
+            goal = document.getElementById('goal'); // Only one goal
+
+            // Reset players to new starting positions
+            resetPlayer(player1State, player1Element, level.playerStarts.p1.x, level.playerStarts.p1.y);
+            resetPlayer(player2State, player2Element, level.playerStarts.p2.x, level.playerStarts.p2.y);
+        }
+
+         // --- Player Logic ---
+        function resetPlayer(playerState, playerElement, startX, startY) {
+            playerState.x = startX;
+            playerState.y = startY;
+            playerState.velX = 0;
+            playerState.velY = 0;
+            playerState.onGround = false; // Recalculate on next frame
+            playerState.atGoal = false;
+
+            // Update visual position immediately
+            playerElement.style.left = `${playerState.x}px`;
+            playerElement.style.top = `${playerState.y}px`;
+        }
+
+        function updatePlayer(playerState, playerElement, controls) {
+            if (gameOver || levelComplete) return; // Stop updates if game/level over
+
+            // Horizontal Movement
+            playerState.velX = 0;
+            if (keys[controls.left]) playerState.velX = -moveSpeed;
+            if (keys[controls.right]) playerState.velX = moveSpeed;
+
+            // Jumping
+            if (keys[controls.up] && playerState.onGround) {
+                playerState.velY = -jumpStrength;
+                playerState.onGround = false;
+            }
+
+            // Apply Gravity
+            playerState.velY += gravity;
+
+            // --- Predictive Collision Checks ---
+            let nextX = playerState.x + playerState.velX;
+            let nextY = playerState.y + playerState.velY;
+            const playerRect = getElementRect(playerElement); // Current visual rect
+
+            // Need predicted bounding boxes based on current state + velocity
+             const predictRect = {
+                 left: playerState.x, top: playerState.y,
+                 width: playerRect.width, height: playerRect.height,
+                 right: playerState.x + playerRect.width, bottom: playerState.y + playerRect.height
+             };
+            const nextXRect = { ...predictRect, left: nextX, right: nextX + predictRect.width };
+            const nextYRect = { ...predictRect, top: nextY, bottom: nextY + predictRect.height };
+
+
+            playerState.onGround = false; // Reset before checking platforms
+
+            // Platform Collision
+            platforms.forEach(platform => {
+                 const platformRect = getElementRect(platform);
+
+                // Horizontal Check (using nextXRect)
+                if (checkCollision(nextXRect, platformRect)) {
+                    if (playerState.velX > 0) { // Moving right
+                        nextX = platformRect.left - predictRect.width;
+                    } else if (playerState.velX < 0) { // Moving left
+                        nextX = platformRect.right;
+                    }
+                    playerState.velX = 0;
+                }
+
+                // Vertical Check (using nextYRect) - crucial to check AFTER adjusting X
+                // Re-check with potentially adjusted horizontal position
+                const adjustedNextYRect = { ...predictRect, left: nextX, right: nextX + predictRect.width, top: nextY, bottom: nextY + predictRect.height };
+                 if (checkCollision(adjustedNextYRect, platformRect)) {
+                     if (playerState.velY > 0) { // Moving Down (landing)
+                         nextY = platformRect.top - predictRect.height;
+                         playerState.velY = 0;
+                         playerState.onGround = true; // Landed
+                     } else if (playerState.velY < 0) { // Moving Up (hitting ceiling)
+                         nextY = platformRect.bottom;
+                         playerState.velY = 0; // Stop upward movement
+                     }
+                 }
+            });
+
+            // Update position based on collision results
+            playerState.x = nextX;
+            playerState.y = nextY;
+
+            // --- Post-Movement Collision Checks ---
+             const finalPlayerRect = { // Rect at the final calculated position
+                 left: playerState.x, top: playerState.y,
+                 right: playerState.x + playerRect.width, bottom: playerState.y + playerRect.height,
+                 width: playerRect.width, height: playerRect.height
+             };
+
+
+            // Obstacle Collision
+            obstacles.forEach(obstacle => {
+                const obstacleRect = getElementRect(obstacle);
+                if (checkCollision(finalPlayerRect, obstacleRect)) {
+                    const isFirePlayer = playerElement.id === 'player1';
+                    const isWaterObstacle = obstacle.classList.contains('water');
+                    const isFireObstacle = obstacle.classList.contains('fire');
+                    const levelConf = levelData[currentLevel];
+
+                    if ((isFirePlayer && isWaterObstacle) || (!isFirePlayer && isFireObstacle)) {
+                        // Reset player to level start
+                         const startPos = isFirePlayer ? levelConf.playerStarts.p1 : levelConf.playerStarts.p2;
+                         resetPlayer(playerState, playerElement, startPos.x, startPos.y);
+                         return; // Exit obstacle check early after reset
+                    }
+                }
+            });
+
+
+             // Goal Collision
+             if (goal) { // Check if goal exists
+                 const goalRect = getElementRect(goal);
+                 if (checkCollision(finalPlayerRect, goalRect)) {
+                     playerState.atGoal = true;
+                 } else {
+                     playerState.atGoal = false;
+                 }
+             } else {
+                  playerState.atGoal = false; // No goal loaded? Not at goal.
+             }
+
+
+            // Boundary Collision (Game Area)
+            if (playerState.x < 0) {
+                playerState.x = 0;
+                playerState.velX = 0;
+            }
+            if (playerState.x + playerRect.width > gameAreaRect.width) {
+                playerState.x = gameAreaRect.width - playerRect.width;
+                playerState.velX = 0;
+            }
+            // Fall off bottom? Reset.
+            if (playerState.y > gameAreaRect.height + 50) { // Allow falling a bit off screen before reset
+                 const levelConf = levelData[currentLevel];
+                 const startPos = playerElement.id === 'player1' ? levelConf.playerStarts.p1 : levelConf.playerStarts.p2;
+                 resetPlayer(playerState, playerElement, startPos.x, startPos.y);
+                 return; // Exit boundary check early
+            }
+            // Prevent jumping through top
+             if (playerState.y < 0) {
+                playerState.y = 0;
+                playerState.velY = 0;
+            }
+
+
+            // Update Visuals
+            playerElement.style.left = `${playerState.x}px`;
+            playerElement.style.top = `${playerState.y}px`;
+        }
+
+
+        function checkWinCondition() {
+            if (levelComplete || gameOver) return; // Don't check if already transitioning or game over
+
+            if (player1State.atGoal && player2State.atGoal) {
+                 levelComplete = true; // Mark level as done to stop player updates briefly
+
+                 if (currentLevel < levelData.length - 1) {
+                     // Go to next level
+                     currentLevel++;
+                     message.textContent = `Level ${currentLevel + 1}! Loading...`;
+                     message.style.color = 'blue';
+                     // Add a small delay before loading to show the message
+                     setTimeout(() => {
+                          loadLevel(currentLevel);
+                          // Keep players' controls active for the next level
+                     }, 1500); // 1.5 second delay
+                 } else {
+                     // Last level completed - Game Over (Win)
+                     gameOver = true;
+                     message.textContent = "Congratulations! You beat all levels!";
+                     message.style.color = 'green';
+                     // Stop players completely maybe?
+                     // No need to load another level
+                 }
+            }
+        }
+
+
+        // --- Game Loop ---
+        function gameLoop() {
+            if (!gameOver) { // Only run loop if game isn't finished
+                 // Update players only if level is not currently transitioning
+                 if (!levelComplete) {
+                    updatePlayer(player1State, player1Element, { up: 'KeyW', left: 'KeyA', right: 'KeyD' });
+                    updatePlayer(player2State, player2Element, { up: 'ArrowUp', left: 'ArrowLeft', right: 'ArrowRight' });
+                 }
+                 checkWinCondition(); // Check win condition continuously
+            } else {
+                 // Optional: Add specific logic for when the game is fully over
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- Start Game ---
+        function init() {
+             loadLevel(currentLevel); // Load the initial level (index 0)
+             gameLoop(); // Start the main game loop
+        }
+
+        init(); // Initialize the game
+
+    </script>
+
+</body>
+</html>
